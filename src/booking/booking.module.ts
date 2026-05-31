@@ -40,6 +40,7 @@ import { VehicleController } from './controllers/vehicle.controller';
 import { VehicleAdminController } from './controllers/vehicle-admin.controller';
 import { VehicleService } from './services/vehicle.service';
 import { DriverAdminController } from './controllers/driver-admin.controller';
+import { RidesAliasController } from './controllers/rides-alias.controller';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { DriverAdminController } from './controllers/driver-admin.controller';
     VehicleController,
     VehicleAdminController,
     DriverAdminController,
+    RidesAliasController,
   ],
   providers: [
     BookingService,
