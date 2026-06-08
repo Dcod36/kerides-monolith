@@ -15,17 +15,6 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { BookingService } from '../services/booking.service';
 import { RideTrackingService } from '../services/ride-tracking.service';
 
-/**
- * Alias controller that mirrors the frontend's legacy /api/rides/* URLs.
- *
- * The frontend (built for the old microservices driver-service) calls:
- *   POST /api/rides/:id/reject
- *   GET  /api/rides/:id/driver-location
- *
- * Rather than changing the frontend, this controller registers the same
- * paths and delegates to the same service methods as BookingController
- * and RideTrackingController.
- */
 @ApiTags('Rides (Alias)')
 @Controller('api/rides')
 @UseGuards(JwtAuthGuard, RolesGuard)
