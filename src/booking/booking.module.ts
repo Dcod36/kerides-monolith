@@ -24,6 +24,7 @@ import { NotificationRepository } from './repositories/notification.repository';
 import { PaymentRepository } from './repositories/payment.repository';
 import { WalletRepository } from './repositories/wallet.repository';
 import { RideLocationRepository } from './repositories/ride-location.repository';
+import { StandRepository } from './repositories/stand.repository';
 import { Booking, BookingSchema } from './schemas/booking.schema';
 import { RideRequest, RideRequestSchema } from './schemas/ride-request.schema';
 import { FareConfig, FareConfigSchema } from './schemas/fare-config.schema';
@@ -41,6 +42,7 @@ import { VehicleAdminController } from './controllers/vehicle-admin.controller';
 import { VehicleService } from './services/vehicle.service';
 import { DriverAdminController } from './controllers/driver-admin.controller';
 import { RidesAliasController } from './controllers/rides-alias.controller';
+import { StandAdminController } from './controllers/stand-admin.controller';
 
 @Module({
   imports: [
@@ -72,6 +74,7 @@ import { RidesAliasController } from './controllers/rides-alias.controller';
     VehicleAdminController,
     DriverAdminController,
     RidesAliasController,
+    StandAdminController,
   ],
   providers: [
     BookingService,
@@ -91,6 +94,7 @@ import { RidesAliasController } from './controllers/rides-alias.controller';
     PaymentRepository,
     WalletRepository,
     RideLocationRepository,
+    StandRepository,
   ],
   exports: [
     BookingService,

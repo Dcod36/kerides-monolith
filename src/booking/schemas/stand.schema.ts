@@ -25,10 +25,10 @@ export class Stand extends Document {
   @Prop({ default: true })
   isActive: boolean;
 
-  @Prop({ trim: true, default: null })
+  @Prop({ type: String, trim: true, default: null })
   address: string | null;
 
-  @Prop({ trim: true, default: null })
+  @Prop({ type: String, trim: true, default: null })
   landmark: string | null;
 
   createdAt?: Date;
