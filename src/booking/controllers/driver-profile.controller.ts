@@ -6,11 +6,14 @@ import {
   Patch,
   Delete,
   Body,
+  Query,
   UseGuards,
   Request,
   HttpCode,
   HttpStatus,
   NotFoundException,
+  ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -26,6 +29,7 @@ import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagg
 export class DriverProfileController {
   constructor(
     @InjectModel('DriverProfile') private readonly driverProfileModel: Model<any>,
+    @InjectModel('Stand') private readonly standModel: Model<any>,
   ) {}
 
   private getActorId(req: any): string {
@@ -173,5 +177,145 @@ export class DriverProfileController {
       longitude: profile.longitude,
       isOnline: profile.isOnline,
     };
+  }
+
+  // ─── Nearby Stands ────────────────────────────────────────────────────────
+  @Get('me/nearby-stands')
+  @Roles('DRIVER', 'ADMIN')
+  @ApiOperation({
+    summary: 'List active stands near the driver\'s current location',
+    description:
+      'Returns active stands within the given radius sorted by distance. ' +
+      'Driver can use this to browse and pick a stand to join.',
+  })
+  async getNearbyStands(
+    @Query('latitude') latStr: string,
+    @Query('longitude') lngStr: string,
+    @Query('radiusKm') radiusKmStr?: string,
+  ) {
+    const latitude = parseFloat(latStr);
+    const longitude = parseFloat(lngStr);
+    const radiusKm = parseFloat(radiusKmStr || '5');
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      throw new BadRequestException('latitude and longitude query params are required');
+    }
+
+    const stands = await this.standModel
+      .find({
+        isActive: true,
+        location: {
+          $nearSphere: {
+            $geometry: { type: 'Point', coordinates: [longitude, latitude] },
+            $maxDistance: radiusKm * 1000, // metres
+          },
+        },
+      })
+      .lean()
+      .exec() as any[];
+
+    // Flatten GeoJSON → lat/lng for frontend
+    return stands.map((stand) => ({
+      ...stand,
+      latitude: stand.location?.coordinates?.[1] ?? null,
+      longitude: stand.location?.coordinates?.[0] ?? null,
+    }));
+  }
+
+  // ─── Request to Join a Stand ──────────────────────────────────────────────
+  @Post('me/stand-request')
+  @Roles('DRIVER')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Request to join a stand (requires admin approval)',
+    description:
+      'Driver submits a join request for a specific stand. ' +
+      'Sets pendingStandRequestId and standRequestStatus=PENDING. ' +
+      'Does NOT change assignedStandId — booking availability is unaffected.',
+  })
+  async requestStand(
+    @Request() req: any,
+    @Body('standId') standId: string,
+  ) {
+    if (!standId) {
+      throw new BadRequestException('standId is required in the request body');
+    }
+
+    if (!Types.ObjectId.isValid(standId)) {
+      throw new BadRequestException('Invalid standId');
+    }
+
+    const accountId = this.getActorId(req);
+
+    // Make sure the stand exists and is active
+    const stand = await this.standModel.findOne({
+      _id: new Types.ObjectId(standId),
+      isActive: true,
+    }).lean().exec() as any;
+
+    if (!stand) {
+      throw new NotFoundException('Stand not found or is not active');
+    }
+
+    // Block if driver already has a pending request
+    const existing = await this.driverProfileModel.findOne({
+      accountId: new Types.ObjectId(accountId),
+      standRequestStatus: 'PENDING',
+    }).lean().exec();
+
+    if (existing) {
+      throw new ConflictException(
+        'You already have a pending stand request. Cancel it before requesting a new one.',
+      );
+    }
+
+    const profile = await this.driverProfileModel.findOneAndUpdate(
+      { accountId: new Types.ObjectId(accountId) },
+      {
+        $set: {
+          pendingStandRequestId: new Types.ObjectId(standId),
+          standRequestStatus: 'PENDING',
+        },
+      },
+      { new: true, upsert: true },
+    ).lean().exec() as any;
+
+    return {
+      message: 'Stand request submitted successfully. Awaiting admin approval.',
+      standId,
+      standName: stand.name,
+      standRequestStatus: profile.standRequestStatus,
+    };
+  }
+
+  // ─── Cancel Pending Stand Request ─────────────────────────────────────────
+  @Delete('me/stand-request')
+  @Roles('DRIVER')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel the driver\'s pending stand join request',
+    description: 'Clears pendingStandRequestId and standRequestStatus. Does not affect assignedStandId.',
+  })
+  async cancelStandRequest(@Request() req: any) {
+    const accountId = this.getActorId(req);
+
+    const profile = await this.driverProfileModel.findOne({
+      accountId: new Types.ObjectId(accountId),
+    }).lean().exec() as any;
+
+    if (!profile) {
+      throw new NotFoundException('Driver profile not found');
+    }
+
+    if (profile.standRequestStatus !== 'PENDING') {
+      throw new BadRequestException('No pending stand request to cancel');
+    }
+
+    await this.driverProfileModel.findOneAndUpdate(
+      { accountId: new Types.ObjectId(accountId) },
+      { $set: { pendingStandRequestId: null, standRequestStatus: null } },
+    ).exec();
+
+    return { message: 'Stand request cancelled successfully.' };
   }
 }
