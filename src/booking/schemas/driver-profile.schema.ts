@@ -98,6 +98,25 @@ export class DriverProfile extends Document {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Stand' })
   assignedStandId?: Types.ObjectId;
 
+  /**
+   * Stand the driver has requested to join — set when driver submits a request.
+   * Cleared after admin approves or rejects.
+   * NOT used in matching/dispatch logic — only for the approval workflow.
+   */
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Stand', default: null })
+  pendingStandRequestId?: Types.ObjectId | null;
+
+  /**
+   * Status of the driver's stand join request.
+   * Does NOT affect booking availability — matching only uses isOnline + isVerified.
+   */
+  @Prop({
+    type: String,
+    enum: ['PENDING', 'APPROVED', 'REJECTED'],
+    default: null,
+  })
+  standRequestStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+
   createdAt?: Date;
   updatedAt?: Date;
 }
