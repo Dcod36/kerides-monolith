@@ -50,6 +50,20 @@ export class Account extends Document {
   @Prop({ required: false })
   emailOtpExpires?: Date;
 
+  // ─── User Profile ────
+
+  @Prop({ required: false })
+  profileImage?: string;
+
+  @Prop({ required: false, trim: true })
+  address?: string;
+
+  @Prop({ type: Object, required: false })
+  addressDetails?: Record<string, any>;
+
+  @Prop({ type: [String], default: [] })
+  preferences?: string[];
+
   // Timestamps added automatically by { timestamps: true }
   createdAt?: Date;
   updatedAt?: Date;

@@ -22,7 +22,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
     @InjectModel(Account.name) private readonly accountModel: Model<Account>,
-  ) {}
+  ) { }
 
   // ─── OTP: Send ──────────────────────────────────────────────────────────────
 
@@ -165,6 +165,7 @@ export class AuthService {
         fullName: tempAccount.fullName,
         role: tempAccount.role,
         phoneNumber: tempAccount.phoneNumber,
+        profileImage: tempAccount.profileImage || null,
       },
     };
   }
@@ -208,7 +209,7 @@ export class AuthService {
         fullName: account.fullName,
         role: account.role,
         phoneNumber: account.phoneNumber,
-        // profileImage will be fetched by frontend from /profiles/me or /driver-profiles/me
+        profileImage: account.profileImage || null,
       },
     };
   }

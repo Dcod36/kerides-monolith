@@ -7,6 +7,6 @@ export class AuthResponseDto {
     fullName: string;
     role: string;
     phoneNumber?: string;
-    profileImage?: string;
+    profileImage?: string | null;
   };
 }

@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
+import { ProfileController } from './profile.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RolesGuard } from './guards/roles.guard';
@@ -21,7 +22,7 @@ import { MailService } from '../mail/mail.service';
       { name: Account.name, schema: AccountSchema },
     ]),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, ProfileController],
   providers: [AuthService, AccountRepository, JwtStrategy, RolesGuard, MailService],
   exports: [AuthService, JwtStrategy, PassportModule, AccountRepository],
 })

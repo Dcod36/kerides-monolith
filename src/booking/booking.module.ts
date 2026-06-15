@@ -35,7 +35,6 @@ import { RideLocation, RideLocationSchema } from './schemas/ride-location.schema
 import { DriverProfile, DriverProfileSchema } from './schemas/driver-profile.schema';
 import { Vehicle, VehicleSchema } from './schemas/vehicle.schema';
 import { Stand, StandSchema } from './schemas/stand.schema';
-import { DriverProfileController } from './controllers/driver-profile.controller';
 import { DriversController } from './controllers/drivers.controller';
 import { VehicleController } from './controllers/vehicle.controller';
 import { VehicleAdminController } from './controllers/vehicle-admin.controller';
@@ -43,6 +42,7 @@ import { VehicleService } from './services/vehicle.service';
 import { DriverAdminController } from './controllers/driver-admin.controller';
 import { RidesAliasController } from './controllers/rides-alias.controller';
 import { StandAdminController } from './controllers/stand-admin.controller';
+import { DriverProfileController } from './controllers/driver-profile.controller';
 
 @Module({
   imports: [
@@ -68,13 +68,13 @@ import { StandAdminController } from './controllers/stand-admin.controller';
     RideRequestController,
     PaymentController,
     RideTrackingController,
-    DriverProfileController,
     DriversController,
     VehicleController,
     VehicleAdminController,
     DriverAdminController,
     RidesAliasController,
     StandAdminController,
+    DriverProfileController,
   ],
   providers: [
     BookingService,
@@ -106,7 +106,7 @@ import { StandAdminController } from './controllers/stand-admin.controller';
   ],
 })
 export class BookingModule implements OnModuleInit {
-  constructor(private readonly fareService: FareService) {}
+  constructor(private readonly fareService: FareService) { }
 
   async onModuleInit() {
     // Seed default fare configurations on startup

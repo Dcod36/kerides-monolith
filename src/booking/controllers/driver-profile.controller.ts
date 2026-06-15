@@ -30,7 +30,7 @@ export class DriverProfileController {
   constructor(
     @InjectModel('DriverProfile') private readonly driverProfileModel: Model<any>,
     @InjectModel('Stand') private readonly standModel: Model<any>,
-  ) {}
+  ) { }
 
   private getActorId(req: any): string {
     return req?.user?.userId || req?.user?.accountId || req?.user?.id || req?.user?.sub;
@@ -153,7 +153,7 @@ export class DriverProfileController {
   async updateLocation(@Request() req: any, @Body() locationDto: any) {
     const accountId = this.getActorId(req);
     const { latitude, longitude, lat, lng, isOnline } = locationDto;
-    
+
     const finalLat = typeof latitude === 'number' ? latitude : lat;
     const finalLng = typeof longitude === 'number' ? longitude : lng;
 
