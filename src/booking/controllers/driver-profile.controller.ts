@@ -30,10 +30,62 @@ export class DriverProfileController {
   constructor(
     @InjectModel('DriverProfile') private readonly driverProfileModel: Model<any>,
     @InjectModel('Stand') private readonly standModel: Model<any>,
+    @InjectModel('Account') private readonly accountModel: Model<any>,
   ) { }
 
   private getActorId(req: any): string {
     return req?.user?.userId || req?.user?.accountId || req?.user?.id || req?.user?.sub;
+  }
+
+
+  private async buildFullProfile(accountId: string): Promise<any> {
+    const [profile, account] = await Promise.all([
+      this.driverProfileModel.findOne({ accountId: new Types.ObjectId(accountId) }).lean().exec(),
+      this.accountModel.findById(new Types.ObjectId(accountId), {
+        passwordHash: 0, emailOtp: 0, emailOtpExpires: 0,
+      }).lean().exec(),
+    ]);
+
+    // Base account-level personal info
+    const accountInfo = account
+      ? {
+        fullName: (account as any).fullName ?? null,
+        email: (account as any).email ?? null,
+        phoneNumber: (account as any).phoneNumber ?? null,
+        address: (account as any).address ?? null,
+        addressDetails: (account as any).addressDetails ?? null,
+        profileImage: (account as any).profileImage ?? null,
+        role: (account as any).role ?? 'DRIVER',
+        isActive: (account as any).isActive ?? true,
+        emailVerified: (account as any).emailVerified ?? false,
+      }
+      : {};
+
+    if (!profile) {
+      return {
+        accountId,
+        ...accountInfo,
+        isOnline: false,
+        isVerified: true,
+        verificationStatus: 'APPROVED',
+        rating: 5,
+        totalTrips: 0,
+        operatingArea: [],
+        emergencyContact: null,
+      };
+    }
+
+
+    return {
+      ...accountInfo,
+      ...profile,
+      // Always expose these from account (they are the source of truth)
+      fullName: (account as any)?.fullName ?? (profile as any).fullName ?? null,
+      email: (account as any)?.email ?? null,
+      phoneNumber: (account as any)?.phoneNumber ?? (profile as any).phoneNumber ?? null,
+      address: (account as any)?.address ?? (profile as any).address ?? null,
+      addressDetails: (account as any)?.addressDetails ?? (profile as any).addressDetails ?? null,
+    };
   }
 
   @Post()
@@ -52,38 +104,51 @@ export class DriverProfileController {
 
   @Get('me')
   @Roles('DRIVER', 'ADMIN')
-  @ApiOperation({ summary: 'Get current driver profile' })
+  @ApiOperation({ summary: 'Get current driver profile (merged: account + driver-profile)' })
+  @ApiResponse({ status: 200, description: 'Returns merged account + driver profile data including address, emergencyContact, operatingArea' })
   async getMyProfile(@Request() req: any) {
     const accountId = this.getActorId(req);
-    const profile = await this.driverProfileModel.findOne({
-      accountId: new Types.ObjectId(accountId),
-    }).lean().exec();
-
-    if (!profile) {
-      // Fallback: return a default approved profile so frontend doesn't crash
-      return {
-        accountId,
-        isOnline: false,
-        isVerified: true,
-        verificationStatus: 'APPROVED',
-        rating: 5,
-        totalTrips: 0,
-      };
-    }
-    return profile;
+    return this.buildFullProfile(accountId);
   }
 
   @Put('me')
   @Roles('DRIVER', 'ADMIN')
-  @ApiOperation({ summary: 'Update current driver profile and documents' })
+  @ApiOperation({ summary: 'Update driver profile — routes account fields (address/name/phone) to accounts collection' })
   async updateMyProfile(@Request() req: any, @Body() updateDto: any) {
     const accountId = this.getActorId(req);
-    const profile = await this.driverProfileModel.findOneAndUpdate(
-      { accountId: new Types.ObjectId(accountId) },
-      { $set: updateDto },
-      { new: true, upsert: true },
-    ).lean().exec();
-    return profile;
+
+    // ── Fields that belong on the Account document ──────────────────────────
+    const ACCOUNT_FIELDS = ['fullName', 'phoneNumber', 'address', 'addressDetails', 'profileImage'];
+    const accountUpdates: Record<string, any> = {};
+    const profileUpdates: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(updateDto)) {
+      if (ACCOUNT_FIELDS.includes(key)) {
+        accountUpdates[key] = value;
+      } else {
+        profileUpdates[key] = value;
+      }
+    }
+
+    // Run both updates in parallel when there is something to update
+    await Promise.all([
+      Object.keys(accountUpdates).length > 0
+        ? this.accountModel.findByIdAndUpdate(
+          new Types.ObjectId(accountId),
+          { $set: accountUpdates },
+        ).exec()
+        : Promise.resolve(),
+      Object.keys(profileUpdates).length > 0
+        ? this.driverProfileModel.findOneAndUpdate(
+          { accountId: new Types.ObjectId(accountId) },
+          { $set: profileUpdates },
+          { new: true, upsert: true },
+        ).exec()
+        : Promise.resolve(),
+    ]);
+
+    // Return the merged, up-to-date combined profile
+    return this.buildFullProfile(accountId);
   }
 
   @Post('me/documents/presign-upload')

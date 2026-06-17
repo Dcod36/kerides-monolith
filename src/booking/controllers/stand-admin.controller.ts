@@ -21,7 +21,8 @@ import {
   ApiTags,
   ApiQuery,
 } from '@nestjs/swagger';
-import { Types } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -33,7 +34,11 @@ import { StandRepository } from '../repositories/stand.repository';
 @Controller('admin/stands')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class StandAdminController {
-  constructor(private readonly standRepository: StandRepository) {}
+  constructor(
+    private readonly standRepository: StandRepository,
+    @InjectModel('DriverProfile') private readonly driverProfileModel: Model<any>,
+    @InjectModel('Account') private readonly accountModel: Model<any>,
+  ) {}
 
   // ─── List Stands ───────────────────────────────────────────────────────────
   @Get()
@@ -50,6 +55,71 @@ export class StandAdminController {
       typeof isActive === 'string' ? isActive.toLowerCase() === 'true' : undefined;
 
     return this.standRepository.findAll({ isActive: isActiveBool, search });
+  }
+
+  // ─── List Pending Stand Requests (MUST be before :id route) ───────────────
+  @Get('requests')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'List all pending driver stand join requests (admin)' })
+  @ApiResponse({ status: 200, description: 'Pending requests fetched successfully' })
+  async listPendingRequests() {
+    const profiles = await this.driverProfileModel
+      .find({ standRequestStatus: 'PENDING' })
+      .lean()
+      .exec() as any[];
+
+    if (!profiles.length) return [];
+
+    const accountIds = profiles
+      .map((p) => String(p.accountId || ''))
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+
+    const accounts = await this.accountModel.db
+      .collection('accounts')
+      .find(
+        { _id: { $in: accountIds } },
+        { projection: { fullName: 1, phoneNumber: 1, email: 1 } },
+      )
+      .toArray();
+
+    const accountsById = new Map<string, any>();
+    for (const acc of accounts) {
+      accountsById.set(String(acc._id), acc);
+    }
+
+    const standIds = profiles
+      .map((p) => String(p.pendingStandRequestId || ''))
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+
+    const stands = standIds.length
+      ? await this.driverProfileModel.db
+          .collection('stands')
+          .find({ _id: { $in: standIds } }, { projection: { name: 1 } })
+          .toArray()
+      : [];
+
+    const standsById = new Map<string, any>();
+    for (const s of stands) {
+      standsById.set(String(s._id), s);
+    }
+
+    return profiles.map((p) => {
+      const acc = accountsById.get(String(p.accountId)) || {};
+      const stand = standsById.get(String(p.pendingStandRequestId)) || {};
+      return {
+        driverProfileId: p._id,
+        accountId: p.accountId,
+        fullName: acc.fullName,
+        phoneNumber: acc.phoneNumber,
+        email: acc.email,
+        pendingStandRequestId: p.pendingStandRequestId,
+        pendingStandName: stand.name ?? null,
+        standRequestStatus: p.standRequestStatus,
+        requestedAt: p.updatedAt,
+      };
+    });
   }
 
   // ─── Get Single Stand ──────────────────────────────────────────────────────
@@ -143,5 +213,183 @@ export class StandAdminController {
     if (!stand) throw new NotFoundException('Stand not found');
 
     return { message: 'Stand deleted successfully', id };
+  }
+
+
+
+  // ─── Approve Stand Request ─────────────────────────────────────────────────
+  @Patch('requests/:driverProfileId/approve')
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Approve a driver stand join request (admin)' })
+  @ApiResponse({ status: 200, description: 'Stand request approved' })
+  @ApiResponse({ status: 404, description: 'Driver profile not found or no pending request' })
+  async approveStandRequest(@Param('driverProfileId') driverProfileId: string) {
+    if (!Types.ObjectId.isValid(driverProfileId)) {
+      throw new BadRequestException('Invalid driverProfileId');
+    }
+
+    const profile = await this.driverProfileModel
+      .findOne({ _id: new Types.ObjectId(driverProfileId), standRequestStatus: 'PENDING' })
+      .lean()
+      .exec() as any;
+
+    if (!profile) {
+      throw new NotFoundException('No pending stand request found for this driver');
+    }
+
+    const updated = await this.driverProfileModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(driverProfileId),
+        {
+          $set: {
+            assignedStandId: profile.pendingStandRequestId,
+            standRequestStatus: 'APPROVED',
+            pendingStandRequestId: null,
+          },
+        },
+        { new: true },
+      )
+      .lean()
+      .exec() as any;
+
+    return {
+      message: 'Stand request approved. Driver has been assigned to the stand.',
+      assignedStandId: updated.assignedStandId,
+      standRequestStatus: updated.standRequestStatus,
+    };
+  }
+
+  // ─── Reject Stand Request ──────────────────────────────────────────────────
+  @Patch('requests/:driverProfileId/reject')
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reject a driver stand join request (admin)' })
+  @ApiResponse({ status: 200, description: 'Stand request rejected' })
+  @ApiResponse({ status: 404, description: 'Driver profile not found or no pending request' })
+  async rejectStandRequest(@Param('driverProfileId') driverProfileId: string) {
+    if (!Types.ObjectId.isValid(driverProfileId)) {
+      throw new BadRequestException('Invalid driverProfileId');
+    }
+
+    const profile = await this.driverProfileModel
+      .findOne({ _id: new Types.ObjectId(driverProfileId), standRequestStatus: 'PENDING' })
+      .lean()
+      .exec();
+
+    if (!profile) {
+      throw new NotFoundException('No pending stand request found for this driver');
+    }
+
+    const updated = await this.driverProfileModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(driverProfileId),
+        {
+          $set: {
+            standRequestStatus: 'REJECTED',
+            pendingStandRequestId: null,
+          },
+        },
+        { new: true },
+      )
+      .lean()
+      .exec() as any;
+
+    return {
+      message: 'Stand request rejected.',
+      standRequestStatus: updated.standRequestStatus,
+    };
+  }
+
+  // ─── Unassign Driver from Stand ────────────────────────────────────────────
+  @Delete('drivers/:driverProfileId/unassign')
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove a driver from their assigned stand (admin)' })
+  @ApiResponse({ status: 200, description: 'Driver unassigned from stand' })
+  @ApiResponse({ status: 404, description: 'Driver profile not found' })
+  async unassignDriver(@Param('driverProfileId') driverProfileId: string) {
+    if (!Types.ObjectId.isValid(driverProfileId)) {
+      throw new BadRequestException('Invalid driverProfileId');
+    }
+
+    const profile = await this.driverProfileModel
+      .findById(new Types.ObjectId(driverProfileId))
+      .lean()
+      .exec();
+
+    if (!profile) {
+      throw new NotFoundException('Driver profile not found');
+    }
+
+    await this.driverProfileModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(driverProfileId),
+        {
+          $set: {
+            assignedStandId: null,
+            standRequestStatus: null,
+            pendingStandRequestId: null,
+          },
+        },
+      )
+      .exec();
+
+    return { message: 'Driver has been unassigned from their stand.' };
+  }
+
+  // ─── List Drivers Assigned to a Stand ─────────────────────────────────────
+  @Get(':standId/drivers')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'List all drivers assigned to a specific stand (admin)' })
+  @ApiResponse({ status: 200, description: 'Drivers fetched successfully' })
+  @ApiResponse({ status: 404, description: 'Stand not found' })
+  async getDriversByStand(@Param('standId') standId: string) {
+    if (!Types.ObjectId.isValid(standId)) {
+      throw new BadRequestException('Invalid standId');
+    }
+
+    const stand = await this.standRepository.findById(standId);
+    if (!stand) throw new NotFoundException('Stand not found');
+
+    const profiles = await this.driverProfileModel
+      .find({ assignedStandId: new Types.ObjectId(standId) })
+      .lean()
+      .exec() as any[];
+
+    if (!profiles.length) return [];
+
+    const accountIds = profiles
+      .map((p) => String(p.accountId || ''))
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+
+    const accounts = await this.accountModel.db
+      .collection('accounts')
+      .find(
+        { _id: { $in: accountIds } },
+        { projection: { fullName: 1, phoneNumber: 1, email: 1 } },
+      )
+      .toArray();
+
+    const accountsById = new Map<string, any>();
+    for (const acc of accounts) {
+      accountsById.set(String(acc._id), acc);
+    }
+
+    return profiles.map((p) => {
+      const acc = accountsById.get(String(p.accountId)) || {};
+      return {
+        driverProfileId: p._id,
+        accountId: p.accountId,
+        fullName: acc.fullName,
+        phoneNumber: acc.phoneNumber,
+        email: acc.email,
+        isOnline: p.isOnline,
+        isVerified: p.isVerified,
+        rating: p.rating,
+        totalTrips: p.totalTrips,
+      };
+    });
   }
 }

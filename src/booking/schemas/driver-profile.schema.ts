@@ -12,6 +12,20 @@ class EmergencyContact {
   relationship?: string;
 }
 
+class OperatingArea {
+  @Prop()
+  name?: string;
+
+  @Prop()
+  latitude?: number;
+
+  @Prop()
+  longitude?: number;
+
+  @Prop()
+  radiusKm?: number;
+}
+
 @Schema({ 
   timestamps: true,
   collection: 'driver_profiles'
@@ -85,6 +99,9 @@ export class DriverProfile extends Document {
 
   @Prop({ type: EmergencyContact })
   emergencyContact?: EmergencyContact;
+
+  @Prop({ type: [OperatingArea], default: [] })
+  operatingArea?: OperatingArea[];
 
   @Prop()
   latitude?: number;
