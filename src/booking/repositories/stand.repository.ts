@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Stand, StandDocument } from '../schemas/stand.schema';
@@ -34,6 +34,18 @@ export class StandRepository {
     address?: string | null;
     landmark?: string | null;
   }): Promise<any> {
+    // Guard: reject if a stand already exists at the exact same coordinates
+    const existing = await this.standModel.findOne({
+      'location.coordinates': [data.longitude, data.latitude],
+    }).lean().exec();
+
+    if (existing) {
+      throw new ConflictException(
+        `A stand already exists at coordinates (${data.latitude}, ${data.longitude}). ` +
+        `Existing stand: "${(existing as any).name}" (id: ${(existing as any)._id}).`,
+      );
+    }
+
     const created = await this.standModel.create({
       name: data.name,
       location: {
@@ -106,6 +118,19 @@ export class StandRepository {
 
     // Update GeoJSON location only if both coordinates provided
     if (update.latitude !== undefined && update.longitude !== undefined) {
+      // Guard: reject if another stand already exists at the target coordinates
+      const duplicate = await this.standModel.findOne({
+        'location.coordinates': [update.longitude, update.latitude],
+        _id: { $ne: objectId }, // exclude the stand being updated
+      }).lean().exec();
+
+      if (duplicate) {
+        throw new ConflictException(
+          `Another stand already exists at coordinates (${update.latitude}, ${update.longitude}). ` +
+          `Existing stand: "${(duplicate as any).name}" (id: ${(duplicate as any)._id}).`,
+        );
+      }
+
       $set.location = {
         type: 'Point',
         coordinates: [update.longitude, update.latitude],
