@@ -529,6 +529,8 @@ export class BookingService {
         latitude: d.latitude,
         longitude: d.longitude,
         vehicle: d.vehicle,
+        priorityGroup: d.priorityGroup ?? null,   // 'STAND' | 'NEAREST' | null
+        matchSource: d.matchSource ?? null,         // 'STAND' | 'NEAREST' | null
       })),
     };
   }
