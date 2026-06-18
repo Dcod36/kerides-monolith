@@ -207,7 +207,23 @@ export class MatchingService {
       typeof d.latitude === 'number' && typeof d.longitude === 'number',
     );
 
-    return driversWithLocation
+    // Only keep drivers who are physically within their own stand's radius.
+    // Uses the per-stand radiusKm (falls back to standSearchRadiusKm env default).
+    const driversNearTheirStand = driversWithLocation.filter((driver) => {
+      const stand = nearbyStands.find((s) => String(s._id) === driver.assignedStandId);
+      if (!stand) return false;
+      const standLat = stand.location.coordinates[1];
+      const standLng = stand.location.coordinates[0];
+      const distToStand = calculateDistance(standLat, standLng, driver.latitude!, driver.longitude!);
+      return distToStand <= (stand.radiusKm ?? this.standSearchRadiusKm);
+    });
+
+    this.logger.debug(
+      `Stand proximity filter: ${driversWithLocation.length} drivers fetched, ` +
+      `${driversNearTheirStand.length} within their stand radius`,
+    );
+
+    return driversNearTheirStand
       .map((driver) => {
         const distance = calculateDistance(pickupLat, pickupLng, driver.latitude!, driver.longitude!);
         return {
