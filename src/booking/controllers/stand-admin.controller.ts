@@ -212,7 +212,29 @@ export class StandAdminController {
     const stand = await this.standRepository.deleteById(id);
     if (!stand) throw new NotFoundException('Stand not found');
 
-    return { message: 'Stand deleted successfully', id };
+    // Clean up all driver profiles that were assigned to this stand
+    const standObjectId = new Types.ObjectId(id);
+    const cleanupResult = await this.driverProfileModel.updateMany(
+      {
+        $or: [
+          { assignedStandId: standObjectId },
+          { pendingStandRequestId: standObjectId },
+        ],
+      },
+      {
+        $set: {
+          assignedStandId: null,
+          pendingStandRequestId: null,
+          standRequestStatus: null,
+        },
+      },
+    ).exec();
+
+    return {
+      message: 'Stand deleted successfully',
+      id,
+      driversUnassigned: cleanupResult.modifiedCount,
+    };
   }
 
 
